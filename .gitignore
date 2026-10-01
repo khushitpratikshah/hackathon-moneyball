@@ -1,0 +1,28 @@
+# secrets
+.env
+*.env
+.env.*
+moneyball.env
+hf_token*
+# python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# scraped or generated data must never reach the public repo
+*.parquet
+*.npy
+*.html
+*.gz
+probe/
+out/
+hf/
+hf_home/
+work/
+data/
+ledger/
+colab/out/
+*.zip
+# notebooks converted from colab/analysis.py may hold outputs
+*.ipynb_checkpoints/

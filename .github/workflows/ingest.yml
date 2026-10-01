@@ -1,0 +1,84 @@
+name: ingest
+
+# Daily burst. Four shards run in parallel, each with its own IP and its own slice of the work.
+# Shard 4 of 5 belongs to the Raspberry Pi, so the Actions matrix only covers 0..3.
+on:
+  schedule:
+    - cron: "17 2 * * *"          # 02:17 UTC, off the hour on purpose
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "canary (one job, tests IP reputation), discover (run once), run (gallery + detail, sharded)"
+        default: "run"
+        type: choice
+        options: [run, discover, canary]
+      max_minutes:
+        description: "time budget per job"
+        default: "330"
+      delay:
+        description: "base seconds between requests (raise after a block)"
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+env:
+  HF_REPO: ${{ vars.HF_REPO }}          # repository variable, e.g. youruser/hackathon-moneyball
+  HF_TOKEN: ${{ secrets.HF_TOKEN }}     # fine-grained token, write access to that one dataset repo only
+  WINNER_CSS: ${{ vars.WINNER_CSS }}    # optional, set after running probe if the default badge check misses
+  DELAY: ${{ inputs.delay || vars.DELAY || '2.0' }}
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  canary:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.stage == 'canary' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements.txt
+      - run: python pipeline.py canary
+
+  discover:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.stage == 'discover' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements.txt
+      - run: python pipeline.py canary
+      - run: python pipeline.py discover --max-minutes 100
+        env: { WORKER_ID: gha-discover }
+
+  scrape:
+    if: ${{ github.event_name == 'schedule' || inputs.stage == 'run' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements.txt
+      - name: Canary (fail fast if this runner's IP range is blocked)
+        run: python pipeline.py canary
+      - name: Gallery then detail for this shard
+        env:
+          WORKER_ID: gha-${{ matrix.shard }}
+          WORKDIR: ${{ runner.temp }}/moneyball
+        run: >
+          python pipeline.py run
+          --shard ${{ matrix.shard }} --nshards 5
+          --max-minutes ${{ inputs.max_minutes || '330' }}
+          --nonwinners-per-hack 40

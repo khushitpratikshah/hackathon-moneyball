@@ -1,0 +1,26 @@
+# /etc/systemd/system/moneyball.service
+# The Pi owns shard 4 of 5. Everything the job writes lands on the tmpfs at /mnt/moneyball-ram.
+# Code and the venv are only read from disk.
+[Unit]
+Description=Moneyball Devpost ingestion burst (shard 4)
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/mnt/moneyball-ram
+
+[Service]
+Type=oneshot
+User=__PI_USER__
+WorkingDirectory=/opt/moneyball
+EnvironmentFile=/etc/moneyball.env
+Environment=WORKER_ID=pi5
+Environment=WORKDIR=/mnt/moneyball-ram/work
+Environment=HF_HOME=/mnt/moneyball-ram/hf_home
+Environment=XDG_CACHE_HOME=/mnt/moneyball-ram/cache
+Environment=TMPDIR=/mnt/moneyball-ram/tmp
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStartPre=/usr/bin/mkdir -p /mnt/moneyball-ram/work /mnt/moneyball-ram/hf_home /mnt/moneyball-ram/cache /mnt/moneyball-ram/tmp
+ExecStart=/opt/moneyball/.venv/bin/python pipeline.py run --shard 4 --nshards 5 --max-minutes 180
+ExecStopPost=/bin/sh -c 'rm -rf /mnt/moneyball-ram/work /mnt/moneyball-ram/hf_home /mnt/moneyball-ram/cache /mnt/moneyball-ram/tmp'
+TimeoutStartSec=4h
+Nice=10
+MemoryMax=2G
