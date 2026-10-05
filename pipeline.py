@@ -34,7 +34,10 @@ from urllib.parse import unquote
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-from selectolax.parser import HTMLParser
+try:
+    from selectolax.lexbor import LexborHTMLParser as HTMLParser
+except ImportError:  # selectolax < 1.0
+    from selectolax.parser import HTMLParser
 
 API = "https://devpost.com/api/hackathons"
 WINNER_CSS = os.environ.get("WINNER_CSS", "").strip()  # extra CSS selector that marks a winner badge
